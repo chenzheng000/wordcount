@@ -19,30 +19,40 @@ package com.stdatalabs.SparkWordcount
 #############################################################################################*/
 
 // Scala Imports
-import org.apache.spark.{ SparkConf, SparkContext }
-import org.apache.spark.sql._
-import org.apache.spark.sql.SQLContext._
-import org.apache.spark.sql.hive.HiveContext
 
+import org.apache.spark.rdd.RDD
+import org.apache.spark.{SparkConf, SparkContext}
 object Driver {
 
-  val conf = new SparkConf().setAppName("Spark - Word Count and Sort in Descending Order")
-  val sc = new SparkContext(conf)
-
   def main(args: Array[String]) {
-    val file = sc.textFile(args(0))
-    val lines = file.map(line => line.replaceAll("[^\\w\\s]|('s|ly|ed|ing|ness) ", " ").toLowerCase())
-    val wcRDD = lines.flatMap(line => line.split(" ").filter(_.nonEmpty)).map(word => (word, 1)).reduceByKey(_ + _)
-    val sortedRDD = wcRDD.sortBy(_._2, false)
+    
+    //1.spark配置
+    val sparkConf: SparkConf = new SparkConf().setMaster("local[*]").setAppName("wc1")
 
-    val hadoopConf = new org.apache.hadoop.conf.Configuration()
-    val hdfs = org.apache.hadoop.fs.FileSystem.get(new java.net.URI("hdfs://quickstart.cloudera:8020"), hadoopConf)
-    try {
-      hdfs.delete(new org.apache.hadoop.fs.Path(args(1)), true)
-    } catch {
-      case _: Throwable => {}
-    }
-    sortedRDD.saveAsTextFile(args(1))
+    //2.spark入口
+    val sc: SparkContext = new SparkContext(sparkConf)
+    
+    //todo 业务
+    //1.一行一行的读取数据
+    //{(hello spark),(hello scala)}
+    val lines: RDD[String] = sc.textFile("datas")
+    
+    //2.对数据进行扁平化处理，打散成一个个单词
+    //{(hello spark),(hello scala)} --> {hello,spark,hello,scala}
+    val words: RDD[String] = lines.flatMap(_.split(" "))
+    
+    //3.将一个个单词映射成元组
+    val wordtoOne: RDD[(String, Int)] = words.map((_, 1))
+
+    //4.对RDD按key进行聚合
+    val wordToSum: RDD[(String, Int)] = wordtoOne.reduceByKey(_ + _)
+
+    //以数组Array的形式返回数据的所有元素
+    //5.搜集数据到Driver端进行打印,慎用
+    val tuples: Array[(String, Int)] = wordToSum.collect()
+    tuples.foreach(println)
+    sc.stop()
+    
   }
 
 }
